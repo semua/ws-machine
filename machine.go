@@ -1,33 +1,34 @@
 package machine
 
 import (
-	"fmt"
-	"time"
-	"sync"
 	"errors"
+	"fmt"
 	"net/http"
+	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/aglyzov/log15"
+	//"github.com/aglyzov/log15"
+	Log "github.com/sirupsen/logrus"
 )
 
-var Log = log15.New("pkg", "machine")
+//var Log = log15.New("pkg", "machine")
 
-type State   byte
+type State byte
 type Command byte
 
 type (
 	Machine struct {
-		URL		string
-		Headers	http.Header
-		Input	<-chan []byte
-		Output	chan<- []byte
-		Status	<-chan Status
-		Command	chan<- Command
+		URL     string
+		Headers http.Header
+		Input   <-chan []byte
+		Output  chan<- []byte
+		Status  <-chan Status
+		Command chan<- Command
 	}
 	Status struct {
-		State	State
-		Error	error
+		State State
+		Error error
 	}
 )
 
@@ -40,7 +41,7 @@ const (
 )
 const (
 	// commands
-	QUIT       Command = 16 + iota
+	QUIT Command = 16 + iota
 	PING
 	USE_TEXT
 	USE_BINARY
@@ -48,43 +49,51 @@ const (
 
 func init() {
 	// disable the logger by default
-	Log.SetHandler(log15.DiscardHandler())
+	//Log.SetHandler(log15.DiscardHandler())
 }
 
 func (s State) String() string {
 	switch s {
-	case DISCONNECTED:  return "DISCONNECTED"
-	case CONNECTING:    return "CONNECTING"
-	case CONNECTED:     return "CONNECTED"
-	case WAITING:       return "WAITING"
+	case DISCONNECTED:
+		return "DISCONNECTED"
+	case CONNECTING:
+		return "CONNECTING"
+	case CONNECTED:
+		return "CONNECTED"
+	case WAITING:
+		return "WAITING"
 	}
 	return fmt.Sprintf("UNKNOWN STATUS %v", s)
 }
 
 func (c Command) String() string {
 	switch c {
-	case QUIT:        return "QUIT"
-	case PING:        return "PING"
-	case USE_TEXT:    return "USE_TEXT"
-	case USE_BINARY:  return "USE_BINARY"
+	case QUIT:
+		return "QUIT"
+	case PING:
+		return "PING"
+	case USE_TEXT:
+		return "USE_TEXT"
+	case USE_BINARY:
+		return "USE_BINARY"
 	}
 	return fmt.Sprintf("UNKNOWN COMMAND %v", c)
 }
 
 func New(url string, headers http.Header) *Machine {
-	inp_ch := make(chan []byte,  8)
-	out_ch := make(chan []byte,  8)
-	sts_ch := make(chan Status,  2)
+	inp_ch := make(chan []byte, 8)
+	out_ch := make(chan []byte, 8)
+	sts_ch := make(chan Status, 2)
 	cmd_ch := make(chan Command, 2)
 
 	con_return_ch := make(chan *websocket.Conn, 1)
-	con_cancel_ch := make(chan bool,     1)
+	con_cancel_ch := make(chan bool, 1)
 
-	r_error_ch    := make(chan error,    1)
-	w_error_ch    := make(chan error,    1)
-	w_control_ch  := make(chan Command,  1)
+	r_error_ch := make(chan error, 1)
+	w_error_ch := make(chan error, 1)
+	w_control_ch := make(chan Command, 1)
 
-	io_event_ch   := make(chan bool,     2)
+	io_event_ch := make(chan bool, 2)
 
 	var wg sync.WaitGroup
 
@@ -95,23 +104,23 @@ func New(url string, headers http.Header) *Machine {
 		Log.Debug("connect has started")
 
 		for {
-			sts_ch <- Status{State:CONNECTING}
-			dialer := websocket.Dialer{HandshakeTimeout: 5*time.Second}
+			sts_ch <- Status{State: CONNECTING}
+			dialer := websocket.Dialer{HandshakeTimeout: 5 * time.Second}
 			conn, _, err := dialer.Dial(url, headers)
 			if err == nil {
-				conn.SetPongHandler(func(string) error {io_event_ch <- true; return nil})
+				conn.SetPongHandler(func(string) error { io_event_ch <- true; return nil })
 				con_return_ch <- conn
-				sts_ch <- Status{State:CONNECTED}
+				sts_ch <- Status{State: CONNECTED}
 				return
 			} else {
 				Log.Debug("connect error", "err", err)
 				sts_ch <- Status{DISCONNECTED, err}
 			}
 
-			sts_ch <- Status{State:WAITING}
+			sts_ch <- Status{State: WAITING}
 			select {
-			case <- time.After(34*time.Second):
-			case <- con_cancel_ch:
+			case <-time.After(34 * time.Second):
+			case <-con_cancel_ch:
 				sts_ch <- Status{DISCONNECTED, errors.New("cancelled")}
 				return
 			}
@@ -123,11 +132,11 @@ func New(url string, headers http.Header) *Machine {
 
 		Log.Debug("keep_alive has started")
 
-		dur   := 34 * time.Second
+		dur := 34 * time.Second
 		timer := time.NewTimer(dur)
 		timer.Stop()
 
-		loop:
+	loop:
 		for {
 			select {
 			case _, ok := <-io_event_ch:
@@ -171,13 +180,13 @@ func New(url string, headers http.Header) *Machine {
 
 		Log.Debug("write has started")
 
-		loop:
+	loop:
 		for {
 			select {
 			case msg, ok := <-out_ch:
 				if ok {
 					io_event_ch <- true
-					if err := conn.SetWriteDeadline(time.Now().Add(3*time.Second)); err != nil {
+					if err := conn.SetWriteDeadline(time.Now().Add(3 * time.Second)); err != nil {
 						w_error_ch <- err
 						break loop
 					}
@@ -185,7 +194,7 @@ func New(url string, headers http.Header) *Machine {
 						w_error_ch <- err
 						break loop
 					}
-					conn.SetWriteDeadline(time.Time{})  // reset write deadline
+					conn.SetWriteDeadline(time.Time{}) // reset write deadline
 				} else {
 					Log.Debug("write error", "err", "out_ch closed")
 					w_error_ch <- errors.New("out_ch closed")
@@ -220,36 +229,50 @@ func New(url string, headers http.Header) *Machine {
 	go func() {
 		// local state
 		var conn *websocket.Conn
-		reading	 := false
-		writing  := false
-		msg_type := websocket.BinaryMessage  // use Binary messages by default
+		reading := false
+		writing := false
+		msg_type := websocket.BinaryMessage // use Binary messages by default
 
 		defer func() {
 			Log.Debug("cleanup has started")
-			if conn != nil {conn.Close()}  // this also makes reader to exit
+			if conn != nil {
+				conn.Close()
+			} // this also makes reader to exit
 
 			// close local output channels
-			close(con_cancel_ch)  // this makes connect    to exit
-			close(w_control_ch)   // this makes write      to exit
-			close(io_event_ch)    // this makes keep_alive to exit
+			close(con_cancel_ch) // this makes connect    to exit
+			close(w_control_ch)  // this makes write      to exit
+			close(io_event_ch)   // this makes keep_alive to exit
 
 			// drain input channels
-			<-time.After(50*time.Millisecond)  // small pause to let things react
+			<-time.After(50 * time.Millisecond) // small pause to let things react
 
-			drain_loop:
+		drain_loop:
 			for {
 				select {
 				case _, ok := <-out_ch:
-					if !ok {out_ch = nil}
+					if !ok {
+						out_ch = nil
+					}
 				case _, ok := <-cmd_ch:
-					if !ok {inp_ch = nil}
+					if !ok {
+						inp_ch = nil
+					}
 				case conn, ok := <-con_return_ch:
-					if conn != nil {conn.Close()}
-					if !ok {con_return_ch = nil}
+					if conn != nil {
+						conn.Close()
+					}
+					if !ok {
+						con_return_ch = nil
+					}
 				case _, ok := <-r_error_ch:
-					if !ok {r_error_ch = nil}
+					if !ok {
+						r_error_ch = nil
+					}
 				case _, ok := <-w_error_ch:
-					if !ok {w_error_ch = nil}
+					if !ok {
+						w_error_ch = nil
+					}
 				default:
 					break drain_loop
 				}
@@ -268,7 +291,7 @@ func New(url string, headers http.Header) *Machine {
 		go connect()
 		go keep_alive()
 
-		main_loop:
+	main_loop:
 		for {
 			select {
 			case conn = <-con_return_ch:
@@ -286,7 +309,7 @@ func New(url string, headers http.Header) *Machine {
 				if writing {
 					// write goroutine is still active
 					Log.Debug("read error -> stopping write")
-					w_control_ch <- QUIT  // ask write to exit
+					w_control_ch <- QUIT // ask write to exit
 					sts_ch <- Status{DISCONNECTED, err}
 				} else {
 					// both read and write goroutines have exited
@@ -304,7 +327,7 @@ func New(url string, headers http.Header) *Machine {
 					// read goroutine is still active
 					Log.Debug("write error -> stopping read")
 					if conn != nil {
-						conn.Close()  // this also makes read to exit
+						conn.Close() // this also makes read to exit
 						conn = nil
 					}
 					sts_ch <- Status{DISCONNECTED, err}
@@ -319,16 +342,24 @@ func New(url string, headers http.Header) *Machine {
 				}
 				switch {
 				case !ok || cmd == QUIT:
-					if reading || writing || conn != nil {sts_ch <- Status{DISCONNECTED, nil}}
-					break main_loop  // defer should clean everything up
+					if reading || writing || conn != nil {
+						sts_ch <- Status{DISCONNECTED, nil}
+					}
+					break main_loop // defer should clean everything up
 				case cmd == PING:
-					if conn != nil && writing {w_control_ch <- cmd}
+					if conn != nil && writing {
+						w_control_ch <- cmd
+					}
 				case cmd == USE_TEXT:
 					msg_type = websocket.TextMessage
-					if writing {w_control_ch <- cmd}
+					if writing {
+						w_control_ch <- cmd
+					}
 				case cmd == USE_BINARY:
 					msg_type = websocket.BinaryMessage
-					if writing {w_control_ch <- cmd}
+					if writing {
+						w_control_ch <- cmd
+					}
 				default:
 					panic(fmt.Sprintf("unsupported command: %v", cmd))
 				}
@@ -336,5 +367,5 @@ func New(url string, headers http.Header) *Machine {
 		}
 	}()
 
-	return & Machine{url, headers, inp_ch, out_ch, sts_ch, cmd_ch}
+	return &Machine{url, headers, inp_ch, out_ch, sts_ch, cmd_ch}
 }

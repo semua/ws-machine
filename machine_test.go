@@ -1,29 +1,30 @@
 package machine
 
 import (
-	"io"
-	"os"
-	"time"
 	"bytes"
-	"testing"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"testing"
+	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/aglyzov/log15"
+	//"github.com/aglyzov/log15"
+	Log "github.com/sirupsen/logrus"
 )
 
 // --- utils ---
 
 type Echoer struct {
-	test	*testing.T
+	test *testing.T
 }
 
 var upgrader = websocket.Upgrader{} // use default options
 
 func NewEchoer(t *testing.T) *Echoer {
-	return & Echoer {
-		test   : t,
+	return &Echoer{
+		test: t,
 	}
 }
 
@@ -59,13 +60,13 @@ func http_to_ws(u string) string {
 
 // --- setup ---
 func TestMain(m *testing.M) {
-	var LogHandler = log15.StreamHandler(os.Stderr, log15.TerminalFormat())
+	//var LogHandler = log15.StreamHandler(os.Stderr, log15.TerminalFormat())
 
-	if _, ok := os.LookupEnv("DEBUG"); ! ok {
-		LogHandler = log15.LvlFilterHandler(log15.LvlInfo, LogHandler)
+	if _, ok := os.LookupEnv("DEBUG"); !ok {
+		//LogHandler = log15.LvlFilterHandler(log15.LvlInfo, LogHandler)
 	}
 
-	Log.SetHandler(LogHandler)
+	//Log.SetHandler(LogHandler)
 
 	os.Exit(m.Run())
 }
@@ -150,14 +151,14 @@ func TestReconnect(t *testing.T) {
 			if st.State != state {
 				t.Errorf("st.State is %v, expected %v. st.Error is %v", st.State, state, st.Error)
 			}
-		case <-time.After(200*time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
 			t.Errorf("WSChan has not changed state in time, expected %v", state)
 		}
 	}
 
 	// cleanup
 	ws.Command <- QUIT
-	<-ws.Status  // DISCONNECTED
+	<-ws.Status // DISCONNECTED
 }
 func TestServerDisappear(t *testing.T) {
 	srv := httptest.NewServer(NewEchoer(t))
@@ -188,14 +189,14 @@ func TestServerDisappear(t *testing.T) {
 			if st.State != state {
 				t.Errorf("st.State is %v, expected %v. st.Error is %v", st.State, state, st.Error)
 			}
-		case <-time.After(200*time.Millisecond):
+		case <-time.After(200 * time.Millisecond):
 			t.Errorf("WSChan has not changed state in time, expected %v", state)
 		}
 	}
 
 	// cleanup
 	ws.Command <- QUIT
-	<-ws.Status  // DISCONNECTED
+	<-ws.Status // DISCONNECTED
 }
 func TestEcho(t *testing.T) {
 	srv := httptest.NewServer(NewEchoer(t))
@@ -225,13 +226,13 @@ func TestEcho(t *testing.T) {
 		} else if !bytes.Equal(msg, orig) {
 			t.Errorf("echo message mismatch: %v != %v", msg, orig)
 		}
-	case <-time.After(100*time.Millisecond):
+	case <-time.After(100 * time.Millisecond):
 		t.Error("Timeout when waiting for an echo message")
 	}
 
 	// cleanup
 	ws.Command <- QUIT
 
-	<-ws.Status  // DISCONNECTED
+	<-ws.Status // DISCONNECTED
 	srv.Close()
 }
